@@ -3,7 +3,10 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const config = require('./src/config');
+const auth = require('./src/auth');
 const game = require('./src/game');
+const arcade = require('./src/arcade');
+const { getPlayerStats } = require('./src/stats');
 const { ensureSet, startScheduler } = require('./src/questions');
 const { todayKey, msUntilReset } = require('./src/dates');
 
@@ -27,8 +30,11 @@ const readJson = (req) =>
     req.on('end', () => { try { resolve(JSON.parse(data || '{}')); } catch { resolve({}); } });
   });
 
+const secureFlag = process.env.NODE_ENV === 'production' || process.env.RENDER ? '; Secure' : '';
 const sessionCookie = (token) =>
-  `ff_token=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${60 * 60 * 24 * 365}${process.env.NODE_ENV === 'production' || process.env.RENDER ? '; Secure' : ''}`;
+  `ff_token=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${60 * 60 * 24 * 365}${secureFlag}`;
+const clearSessionCookie = () =>
+  `ff_token=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secureFlag}`;
 
 // Light per-IP throttle on the write endpoints.
 const hits = new Map();
@@ -44,12 +50,14 @@ setInterval(() => hits.clear(), 60_000).unref();
 
 // ---------- API ----------
 async function api(req, res, url) {
-  const player = game.playerByToken(cookies(req).ff_token);
+  const cookieMap = cookies(req);
+  const player = game.playerByToken(cookieMap.ff_token);
   const route = `${req.method} ${url.pathname}`;
 
   if (req.method === 'POST' && throttled(req)) return send(res, 429, { error: 'Slow down' });
 
   switch (route) {
+    // --- Daily mode ---
     case 'GET /api/state': {
       const state = await game.getState(player);
       return send(res, 200, { ...state, resetsInMs: msUntilReset() });
@@ -75,6 +83,46 @@ async function api(req, res, url) {
     }
     case 'GET /api/leaderboard':
       return send(res, 200, game.leaderboard(player));
+
+    // --- Arcade mode ---
+    case 'GET /api/arcade/state': {
+      const state = await arcade.getArcadeState(player);
+      return send(res, 200, { ...state, resetsInMs: msUntilReset() });
+    }
+    case 'POST /api/arcade/start': {
+      if (!player) return send(res, 401, { error: 'Pick a name first' });
+      return send(res, 200, { ...(await arcade.startArcadeRun(player)), resetsInMs: msUntilReset() });
+    }
+    case 'POST /api/arcade/answer': {
+      if (!player) return send(res, 401, { error: 'Pick a name first' });
+      const { choice } = await readJson(req);
+      const result = await arcade.submitArcadeAnswer(player, choice);
+      return send(res, result.status || 200, result);
+    }
+    case 'GET /api/arcade/leaderboard':
+      return send(res, 200, arcade.arcadeLeaderboard(player));
+
+    // --- Account & Stats ---
+    case 'GET /api/stats':
+      return send(res, 200, { stats: player ? getPlayerStats(player.id) : null });
+    case 'POST /api/auth/register': {
+      const { email, password, name } = await readJson(req);
+      const result = auth.registerWithEmail({ email, password, name, currentPlayer: player });
+      if (result.error) return send(res, result.status || 400, { error: result.error });
+      return send(res, 200, { ok: true, player: result.player }, { 'set-cookie': sessionCookie(result.token) });
+    }
+    case 'POST /api/auth/login': {
+      const { email, password } = await readJson(req);
+      const result = auth.loginWithEmail({ email, password, currentPlayer: player });
+      if (result.error) return send(res, result.status || 401, { error: result.error });
+      return send(res, 200, { ok: true, player: result.player }, { 'set-cookie': sessionCookie(result.token) });
+    }
+    case 'POST /api/auth/logout': {
+      auth.deleteSession(cookieMap.ff_token);
+      return send(res, 200, { ok: true }, { 'set-cookie': clearSessionCookie() });
+    }
+
+    // --- Admin ---
     case 'POST /admin/regenerate': {
       // Rebuild today's set (only safe before people start playing). Requires ADMIN_TOKEN.
       if (!config.adminToken || req.headers['x-admin-token'] !== config.adminToken) return send(res, 403, { error: 'Forbidden' });
@@ -102,6 +150,12 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   try {
     if (url.pathname === '/healthz') return send(res, 200, 'ok');
+    if (url.pathname === '/auth/google') return auth.startGoogleOAuth(req, res);
+    if (url.pathname === '/auth/google/callback') {
+      const cookieMap = cookies(req);
+      const player = game.playerByToken(cookieMap.ff_token);
+      return await auth.handleGoogleCallback(req, res, url, cookieMap, player, sessionCookie);
+    }
     if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/admin/')) return await api(req, res, url);
     return serveStatic(req, res, url);
   } catch (err) {
@@ -113,7 +167,9 @@ const server = http.createServer(async (req, res) => {
 if (require.main === module) {
   server.listen(config.port, () => {
     console.log(`Fifty Fifty on http://localhost:${config.port}  (day rolls over at midnight ${config.timezone})`);
-    ensureSet().catch((e) => console.warn('[startup] could not pre-build today:', e.message));
+    ensureSet()
+      .then(() => arcade.ensurePool())
+      .catch((e) => console.warn('[startup] could not pre-build today:', e.message));
     startScheduler();
   });
 }

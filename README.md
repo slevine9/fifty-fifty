@@ -25,9 +25,11 @@ npm test
 
 ## The experience
 
-- **Landing:** a drifting field of tumbling gold and silver coins (`public/bg.js`), with a name box.
-- **Start:** pressing the button plays a coin toss (`public/flip.js`). A thumb rises, flicks a 3D coin, the coin lands, and the question screen opens out of it in a circle. Returning players get the same toss from the "Flip the coin" button on a new day.
+- **Landing:** a drifting field of tumbling gold and silver coins (`public/bg.js`), defaulting to **Daily** mode.
+- **Left Menu:** the top-left menu button opens a drawer to switch between **Daily** (today's shared chain, 1 run/day) and **Arcade** (play as many unlimited runs as you want), view **All-Time Stats**, or manage your account.
+- **Start:** pressing the button plays a coin toss (`public/flip.js`). A thumb rises, flicks a 3D coin, the coin lands, and the question screen opens out of it in a circle.
 - **Playing:** two answers, silver on one side and gold on the other. After you answer, the correct side expands to take the screen. Picture questions start blurred and sharpen as the clock runs down.
+- **Accounts & Stats:** sign in with **Google (Gmail)** or **Email & Password** to store your account and view Wordle-style all-time stats (Games Played, Best Streak, Average, Daily Day Streak, and Streak Distribution chart) for both Daily and Arcade across devices. Guest runs automatically merge when you sign in.
 - **Reduced motion:** with the OS setting on, the toss and the background are skipped.
 
 Palette and fonts live at the top of `public/style.css` (`--gold`, `--silver`, `--felt-*`, plus Unbounded and Hanken Grotesk from Google Fonts).
@@ -64,20 +66,27 @@ Wikipedia/Wikimedia photos carry their own licenses (mostly CC BY-SA or public d
 | Piece | File |
 |---|---|
 | HTTP server, routes, cookies | `server.js` |
-| Rules: runs, timer, scoring, leaderboard | `src/game.js` |
+| Daily rules: runs, timer, scoring, leaderboard | `src/game.js` |
+| Arcade rules: unlimited runs, pool, leaderboard | `src/arcade.js` |
+| Accounts: Google OAuth 2.0, email/password, sessions | `src/auth.js` |
+| Wordle-style stats & distribution | `src/stats.js` |
 | Midnight rollover logic | `src/dates.js` |
 | Daily question builder + scheduler | `src/questions/index.js` |
 | Sources | `src/questions/*.js` |
-| Tables | `src/db.js` |
+| Tables & migrations | `src/db.js` |
 | Front end | `public/` |
 
 **Same for everyone, fresh at midnight.** A day is `YYYY-MM-DD` in `GAME_TIMEZONE` (default America/New_York). The first request of a day builds and stores that day's chain, and after 11pm game time the server pre-builds tomorrow's so nobody waits at midnight.
 
 **Cheat resistance.**
-- Answers never leave the server. The client only receives the current question, and the next one only after a correct answer.
+- Answers never leave the server (in either Daily or Arcade mode). The client only receives the current question, and the next one only after a correct answer.
 - Each question has a server-enforced timer (`QUESTION_TIME_LIMIT`, default 15s) that keeps running across reloads. The clock starts 1.5 seconds after a question is served, so reveal animations and image loading don't cost the player time.
-- One run per player per day. A wrong answer or timeout ends it.
-- Players are anonymous: a name plus a cookie. There are no accounts yet.
+- One run per player per day in Daily mode; unlimited runs in Arcade mode.
+
+**Google (Gmail) Sign-In setup.**
+1. Open [Google Cloud Console](https://console.cloud.google.com/) -> **APIs & Services -> Credentials -> Create Credentials -> OAuth client ID** (Web application).
+2. Add authorized redirect URI: `http://localhost:3000/auth/google/callback` (and `https://your-app.onrender.com/auth/google/callback` in production).
+3. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env` (or Render environment variables).
 
 **Leaderboard.** Most correct in a row wins. Ties go to whoever reached the streak first.
 
@@ -85,13 +94,12 @@ Wikipedia/Wikimedia photos carry their own licenses (mostly CC BY-SA or public d
 
 1. Push this folder to a GitHub repo. Run `git status` first and confirm `src/` and `public/` are included.
 2. Create a **Web Service** (not a Static Site). Runtime Node, start command `node server.js`, health check `/healthz`. Or create a **Blueprint** from the repo and Render reads `render.yaml`.
-3. **Add a persistent disk** mounted at `/var/data` and set `DATA_DIR=/var/data`. Without it, Render wipes the SQLite file on every deploy and restart, and you lose players and leaderboards. Disks need a paid instance.
+3. **Add a persistent disk** mounted at `/var/data` and set `DATA_DIR=/var/data`. Without it, Render wipes the SQLite file on every deploy and restart, and you lose players, stats, and leaderboards. Disks need a paid instance.
 4. Set `NODE_VERSION=22` (already in `render.yaml`).
-5. Optional: add `ANTHROPIC_API_KEY` and put `claude:N` in `QUESTION_MIX`.
+5. Optional: add `GOOGLE_CLIENT_ID` & `GOOGLE_CLIENT_SECRET` for Google Sign-In, or `ANTHROPIC_API_KEY` if you include `claude:N` in `QUESTION_MIX`.
 
 ## Known limits / next steps
 
 - Single server only (SQLite file + in-memory throttling). For multiple instances, move to Postgres.
-- No real accounts, so streaks don't follow a player across devices.
 - Third-party APIs (REST Countries, Dog CEO, Wikipedia, Open Trivia DB) can be slow or down. The builder tolerates that, but a day's set is built once, so check it before launch.
 - The midnight countdown can be an hour off on the two daylight-saving change days (the day boundary itself is always correct).

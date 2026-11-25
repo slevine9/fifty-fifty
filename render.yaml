@@ -17,6 +17,10 @@ services:
         value: opentdb:14,flags:6,dogs:4,wiki:6,versus:6,history:4
       - key: ADMIN_TOKEN
         generateValue: true
+      # - key: GOOGLE_CLIENT_ID    # optional: enable "Continue with Google" login
+      #   sync: false
+      # - key: GOOGLE_CLIENT_SECRET
+      #   sync: false
       # - key: ANTHROPIC_API_KEY   # add in the dashboard if you add "claude:N" to QUESTION_MIX
       #   sync: false
     disk:

@@ -131,4 +131,27 @@ function startScheduler() {
   setInterval(tick, 5 * 60 * 1000).unref();
 }
 
-module.exports = { ensureSet, getSet, startScheduler, quotas, arrange };
+/** Fetch a fresh unstored batch of questions from the configured mix (used by Arcade mode pool). */
+async function buildArcadeBatch(target = 30) {
+  const want = quotas(config.mix, target);
+  const fetched = await Promise.all(Object.entries(want).map(async ([name, n]) => {
+    const src = sources[name];
+    if (!n || !src) return [name, []];
+    try { return [name, await src.fetchQuestions(Math.ceil(n * 1.4) + 2)]; }
+    catch (err) { console.warn(`[arcade-pool] ${name} failed: ${err.message}`); return [name, []]; }
+  }));
+
+  const seen = new Set();
+  const out = [];
+  for (const [, list] of fetched) {
+    for (const q of list) {
+      const h = fingerprint(q);
+      if (seen.has(h) || q.options[0] === q.options[1]) continue;
+      seen.add(h);
+      out.push(q);
+    }
+  }
+  return shuffle(out);
+}
+
+module.exports = { ensureSet, getSet, startScheduler, quotas, arrange, buildArcadeBatch };

@@ -1,30 +1,13 @@
 // Game rules. The server is the only place that knows the answers.
 //   - Questions are revealed one at a time, only after the previous one was answered correctly.
 //   - Each question has a server-enforced timer that keeps running across page reloads.
-//   - Wrong answer or timeout ends the run for the day. One run per player per day.
-const crypto = require('node:crypto');
+//   - Wrong answer or timeout ends the daily run. One run per player per day.
 const config = require('./config');
 const db = require('./db');
+const auth = require('./auth');
 const { ensureSet } = require('./questions');
 const { todayKey } = require('./dates');
-
-// ---------- players ----------
-function createPlayer(name) {
-  const token = crypto.randomBytes(24).toString('hex');
-  const clean = String(name || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 20) || 'Player';
-  const r = db.prepare('INSERT INTO players (token, name, created_at) VALUES (?, ?, ?)').run(token, clean, Date.now());
-  return { id: Number(r.lastInsertRowid), name: clean, token };
-}
-
-function playerByToken(token) {
-  if (!token) return null;
-  return db.prepare('SELECT id, name FROM players WHERE token = ?').get(token) || null;
-}
-
-function renamePlayer(id, name) {
-  const clean = String(name || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 20);
-  if (clean) db.prepare('UPDATE players SET name = ? WHERE id = ?').run(clean, id);
-}
+const { getPlayerStats } = require('./stats');
 
 // ---------- runs ----------
 const getRun = (date, playerId) =>
@@ -47,10 +30,22 @@ function publicQuestion(set, run) {
   };
 }
 
+const clientPlayer = (p) =>
+  p ? { name: p.name, email: p.email, avatarUrl: p.avatarUrl, authProvider: p.authProvider, isGuest: p.isGuest } : null;
+
 /** Everything the client needs to render the current screen. Never includes answers. */
 async function getState(player) {
   const date = todayKey();
-  const state = { date, timeLimit: config.timeLimit, player: player ? { name: player.name } : null, run: null, question: null };
+  const state = {
+    mode: 'daily',
+    date,
+    timeLimit: config.timeLimit,
+    googleEnabled: config.googleEnabled,
+    player: clientPlayer(player),
+    run: null,
+    question: null,
+    stats: player ? getPlayerStats(player.id) : null,
+  };
   if (!player) return state;
 
   const run = getRun(date, player.id);
@@ -66,6 +61,7 @@ async function getState(player) {
       db.prepare("UPDATE runs SET status = 'out' WHERE date = ? AND player_id = ?").run(date, player.id);
       state.run.status = 'out';
       state.reveal = { correctIndex: answer, timedOut: true };
+      state.stats = getPlayerStats(player.id);
     } else {
       state.question = q;
     }
@@ -75,7 +71,7 @@ async function getState(player) {
 
 async function startRun(player) {
   const date = todayKey();
-  const set = await ensureSet(date);
+  await ensureSet(date);
   const existing = getRun(date, player.id);
   if (!existing) {
     const now = Date.now();
@@ -101,7 +97,7 @@ async function submitAnswer(player, choice) {
 
   if (!correct) {
     db.prepare("UPDATE runs SET status = 'out' WHERE date = ? AND player_id = ?").run(date, player.id);
-    return { correct: false, timedOut, correctIndex: q.answer, streak: run.streak, over: true };
+    return { correct: false, timedOut, correctIndex: q.answer, streak: run.streak, over: true, stats: getPlayerStats(player.id) };
   }
 
   const streak = run.streak + 1;
@@ -109,7 +105,7 @@ async function submitAnswer(player, choice) {
   if (nextIndex >= set.length) {
     db.prepare("UPDATE runs SET status = 'perfect', streak = ?, current_index = ?, last_correct_at = ? WHERE date = ? AND player_id = ?")
       .run(streak, nextIndex, now, date, player.id);
-    return { correct: true, correctIndex: q.answer, streak, over: true, perfect: true };
+    return { correct: true, correctIndex: q.answer, streak, over: true, perfect: true, stats: getPlayerStats(player.id) };
   }
 
   db.prepare('UPDATE runs SET streak = ?, current_index = ?, served_at = ?, last_correct_at = ? WHERE date = ? AND player_id = ?')
@@ -136,4 +132,12 @@ function leaderboard(player, limit = 50) {
   return { date, total: rows.length, entries, you: idx >= 0 ? { rank: idx + 1, streak: rows[idx].streak } : null };
 }
 
-module.exports = { createPlayer, playerByToken, renamePlayer, getState, startRun, submitAnswer, leaderboard };
+module.exports = {
+  createPlayer: auth.createPlayer,
+  playerByToken: auth.playerByToken,
+  renamePlayer: auth.renamePlayer,
+  getState,
+  startRun,
+  submitAnswer,
+  leaderboard,
+};
