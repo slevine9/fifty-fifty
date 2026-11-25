@@ -1,0 +1,17 @@
+{
+  "name": "fiftyfifty",
+  "version": "0.2.0",
+  "description": "Daily two-choice trivia. Same questions for everyone. One wrong answer ends your streak.",
+  "private": true,
+  "type": "commonjs",
+  "main": "server.js",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "generate": "node scripts/generate.js",
+    "test": "node --no-warnings scripts/test-sources.js && node --no-warnings scripts/smoke-test.js"
+  }
+}

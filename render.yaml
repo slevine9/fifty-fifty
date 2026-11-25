@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: fiftyfifty
+    runtime: node
+    plan: starter            # persistent disks require a paid instance
+    buildCommand: echo "no build step"
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: GAME_TIMEZONE
+        value: America/New_York
+      - key: DATA_DIR
+        value: /var/data
+      - key: QUESTION_MIX
+        value: opentdb:14,flags:6,dogs:4,wiki:6,versus:6,history:4
+      - key: ADMIN_TOKEN
+        generateValue: true
+      # - key: ANTHROPIC_API_KEY   # add in the dashboard if you add "claude:N" to QUESTION_MIX
+      #   sync: false
+    disk:
+      name: fiftyfifty-data
+      mountPath: /var/data
+      sizeGB: 1

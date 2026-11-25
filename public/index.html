@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Fifty Fifty</title>
+  <meta name="description" content="One daily chain of two-choice questions. Same for everyone. One miss and you're out.">
+  <meta name="theme-color" content="#07130e">
+  <meta name="referrer" content="no-referrer">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;800&family=Unbounded:wght@600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <canvas id="bg" aria-hidden="true"></canvas>
+
+  <main id="app" aria-live="polite">
+
+    <!-- First visit: pick a name -->
+    <section id="screen-join" class="screen home" hidden>
+      <h1 class="wordmark" aria-label="Fifty Fifty"><span aria-hidden="true">Fifty</span><span class="mini-coin" aria-hidden="true"></span><span aria-hidden="true">Fifty</span></h1>
+      <div class="panel">
+        <p class="lede">Two answers, one is right. Everyone gets the same questions today, and one miss ends your run.</p>
+        <label for="name">Name for the leaderboard</label>
+        <input id="name" maxlength="20" autocomplete="nickname" placeholder="Your name">
+        <button id="join-btn" class="primary">Flip for it</button>
+      </div>
+    </section>
+
+    <!-- Returning player, no run yet today -->
+    <section id="screen-ready" class="screen home" hidden>
+      <h1 class="wordmark" aria-label="Fifty Fifty"><span aria-hidden="true">Fifty</span><span class="mini-coin" aria-hidden="true"></span><span aria-hidden="true">Fifty</span></h1>
+      <div class="panel">
+        <p class="lede" id="ready-lede"></p>
+        <button id="flip-btn" class="primary">Flip the coin</button>
+        <p class="fine">New questions in <span class="countdown"></span></p>
+        <div class="board-slot"></div>
+      </div>
+    </section>
+
+    <!-- Playing -->
+    <section id="screen-play" class="screen play" hidden>
+      <div class="timer"><div id="timer-bar"></div></div>
+      <header class="hud">
+        <div class="streak"><span class="badge" id="streak-num">0</span><span>in a row</span></div>
+        <div class="qno" id="qno"></div>
+      </header>
+      <h2 id="question" class="question"></h2>
+      <figure id="pic" class="pic" hidden>
+        <img id="pic-img" alt="The picture for this question" referrerpolicy="no-referrer" draggable="false">
+        <figcaption id="pic-credit"></figcaption>
+      </figure>
+      <div class="choices" id="choices">
+        <button class="choice c0" data-i="0"><span class="label"></span><span class="mark" aria-hidden="true"></span></button>
+        <button class="choice c1" data-i="1"><span class="label"></span><span class="mark" aria-hidden="true"></span></button>
+      </div>
+    </section>
+
+    <!-- Finished for today -->
+    <section id="screen-over" class="screen home" hidden>
+      <div class="panel">
+        <div class="medal" aria-hidden="true"><span id="result-num">0</span></div>
+        <p class="lede" id="result-text"></p>
+        <button id="share-btn" class="primary">Copy result</button>
+        <p class="fine">New questions in <span class="countdown"></span></p>
+        <div class="board-slot"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Coin toss stage: a thumb flicks a coin, the coin lands, and the question screen opens out of it -->
+  <div id="stage" hidden aria-hidden="true">
+    <svg id="thumb" viewBox="0 0 120 260" aria-hidden="true">
+      <g transform="rotate(-7 60 260)">
+        <path d="M16 260V112C16 52 34 10 62 10s46 42 46 102v148Z" fill="var(--skin)"/>
+        <path d="M108 112v148H86V122c0-52-6-84-24-100 30 2 46 38 46 90Z" fill="var(--skin-shade)"/>
+        <ellipse cx="60" cy="52" rx="23" ry="30" fill="var(--nail)"/>
+        <path d="M28 182q32 12 64-2M28 210q32 12 64-2" fill="none" stroke="var(--skin-shade)" stroke-width="4" stroke-linecap="round"/>
+      </g>
+    </svg>
+    <div class="halo" id="halo"></div>
+    <svg id="ring" viewBox="-50 -50 100 100" aria-hidden="true"><circle r="49" fill="none" stroke="#e9b949" stroke-width="5" vector-effect="non-scaling-stroke"/></svg>
+    <div id="coinwrap"></div>
+    <p id="stage-note"></p>
+  </div>
+
+  <div id="toast" role="status"></div>
+
+  <script src="/bg.js"></script>
+  <script src="/flip.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
